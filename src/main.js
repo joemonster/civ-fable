@@ -21,9 +21,8 @@ let selectedUnit = null;
 let reachCache = null;
 let animQueue = [];      // kolejka animowanych zdarzeń
 let animBusy = false;
-let animWait = 0;        // pozostały czas bieżącej animacji (sterowany pętlą renderu)
+let animDeadline = 0;    // czas (performance.now), po którym bieżąca animacja się kończy
 let animBudget = 1e9;    // ile zdarzeń wolno jeszcze animować w tej fazie
-let lastPump = 0;        // znacznik czasu (watchdog)
 let aiPhase = false;
 let modelsReady = false;
 let running = false;
@@ -90,6 +89,10 @@ function startGame(faction, size) {
   // uchwyt diagnostyczny (testy e2e / konsola)
   window.__game = game;
   window.__redraw = () => { drainEvents(); refreshFog(); ui.updateHud(game); };
+  window.__toScreen = (c, r) => {
+    const p = board.worldPos(c, r).project(camera);
+    return { x: (p.x * 0.5 + 0.5) * window.innerWidth, y: (-p.y * 0.5 + 0.5) * window.innerHeight };
+  };
 }
 
 // ---------------- widoki jednostek ----------------
@@ -161,8 +164,7 @@ function pumpAnim() {
   const dur = animate(e);
   if (dur > 0) {
     animBusy = true;
-    animWait = dur;
-    lastPump = performance.now();
+    animDeadline = performance.now() + dur * 1000;
   } else {
     pumpAnim();
   }
@@ -170,10 +172,10 @@ function pumpAnim() {
 
 // Watchdog: gdyby pętla renderu przystanęła (karta w tle), i tak dokończ kolejkę.
 setInterval(() => {
-  if (animBusy && performance.now() - lastPump > Math.max(2000, animWait * 1000 + 1500)) {
-    animBusy = false; animWait = 0; pumpAnim();
+  if (animBusy && performance.now() > animDeadline) {
+    animBusy = false; pumpAnim();
   }
-}, 700);
+}, 400);
 
 function applyInstant(e) {
   switch (e.t) {
@@ -446,7 +448,7 @@ function selectNextIdle() {
 }
 
 canvas.addEventListener('click', (ev) => {
-  if (!running || aiPhase || animBusy) return;
+  if (!running || aiPhase) return;
   if (rig.dragging) return;
   audio.start();
   const hex = pickHex(ev);
@@ -645,9 +647,8 @@ const clock = new THREE.Clock();
 function loop() {
   requestAnimationFrame(loop);
   const dt = Math.min(0.05, clock.getDelta());
-  if (animBusy) {
-    animWait -= dt;
-    if (animWait <= 0) { animBusy = false; pumpAnim(); }
+  if (animBusy && performance.now() > animDeadline) {
+    animBusy = false; pumpAnim();
   }
   if (running && rig) {
     rig.update(dt);
