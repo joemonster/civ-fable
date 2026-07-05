@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plemiona: Przebudzenie Grzybni</title>
+<link rel="stylesheet" href="styles.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "./lib/three.module.js"
+  }
+}
+</script>
+</head>
+<body>
+<div id="app">
+  <canvas id="scena"></canvas>
+
+  <!-- Menu główne -->
+  <div id="menu" class="fullscreen">
+    <div class="menu-box">
+      <h1>PLEMIONA</h1>
+      <h2>Przebudzenie Grzybni</h2>
+      <p class="tagline">Od włóczni i ula bojowego do nadinteligencji drzemiącej w grzybni.<br>
+      Cztery plemiona. Jedna przyszłość. Kto pierwszy obudzi sieć — wygrywa.</p>
+      <div class="menu-section">
+        <h3>Wybierz plemię</h3>
+        <div id="faction-cards" class="faction-cards"></div>
+      </div>
+      <div class="menu-section">
+        <h3>Rozmiar mapy</h3>
+        <div id="map-sizes" class="map-sizes"></div>
+      </div>
+      <div class="menu-actions">
+        <button id="btn-start" class="big-btn">⚔ Rozpocznij grę</button>
+        <button id="btn-guide-menu" class="ghost-btn">📜 Jak grać</button>
+      </div>
+      <p class="credits-line">Trzy pozostałe plemiona poprowadzi SI. Barbarzyńcy nie śpią.</p>
+    </div>
+  </div>
+
+  <!-- Ekran ładowania -->
+  <div id="loading" class="fullscreen hidden">
+    <div class="loading-box">
+      <div class="spinner"></div>
+      <p id="loading-text">Wczytywanie świata…</p>
+    </div>
+  </div>
+
+  <!-- HUD -->
+  <div id="hud" class="hidden">
+    <div id="topbar">
+      <span id="res-faction" class="res"></span>
+      <span class="res" title="Złoto w skarbcu (utrzymanie wojska, przyspieszanie budowy)">🪙 <b id="res-gold">0</b> <i id="res-gold-d"></i></span>
+      <span class="res" title="Nauka na turę — postęp badań">🔬 <b id="res-sci">0</b></span>
+      <span class="res" title="Poparcie ludu — wysokie daje premie, niskie osłabia produkcję">❤️ <b id="res-pop">50</b></span>
+      <span class="res" title="Łaska możnych — otwiera Kapliczki, Sanktuarium i Przebudzenie">🕯️ <b id="res-laska">30</b></span>
+      <span class="res" id="res-turn">Tura 1</span>
+      <button id="btn-tech" class="bar-btn" title="Drzewo technologii">🧪 <span id="tech-label">Wybierz badanie</span><span id="tech-progress"></span></button>
+      <span class="spacer"></span>
+      <button id="btn-guide" class="bar-btn" title="Jak grać">📜</button>
+      <button id="btn-sound" class="bar-btn" title="Dźwięk">🔊</button>
+      <button id="btn-menu-back" class="bar-btn" title="Powrót do menu">🏠</button>
+    </div>
+
+    <div id="unit-panel" class="panel hidden">
+      <div id="unit-title"></div>
+      <div id="unit-stats"></div>
+      <div id="unit-actions"></div>
+    </div>
+
+    <div id="notify-area"></div>
+
+    <button id="btn-end-turn" class="end-turn">Zakończ turę <span class="key-hint">⏎</span></button>
+    <div id="ai-thinking" class="hidden">⏳ Tury przeciwników…</div>
+    <div id="tooltip" class="hidden"></div>
+  </div>
+
+  <!-- Panel grodu -->
+  <div id="city-panel" class="modal hidden">
+    <div class="modal-box">
+      <button class="close-x" data-close="city-panel">✕</button>
+      <h2 id="city-name"></h2>
+      <div id="city-stats"></div>
+      <h3>Produkcja</h3>
+      <div id="city-current"></div>
+      <div id="city-builds" class="build-list"></div>
+      <div id="city-buildings"></div>
+    </div>
+  </div>
+
+  <!-- Drzewo technologii -->
+  <div id="tech-panel" class="modal hidden">
+    <div class="modal-box wide">
+      <button class="close-x" data-close="tech-panel">✕</button>
+      <h2>🧪 Ścieżka wiedzy</h2>
+      <p class="hint">Od żelaza, przez ule bojowe i liczydła, po grzybnię, która myśli. Kliknij, by badać.</p>
+      <div id="tech-tree"></div>
+    </div>
+  </div>
+
+  <!-- Jak grać -->
+  <div id="guide-panel" class="modal hidden">
+    <div class="modal-box wide">
+      <button class="close-x" data-close="guide-panel">✕</button>
+      <h2>📜 Jak grać</h2>
+      <div id="guide-content" class="guide"></div>
+    </div>
+  </div>
+
+  <!-- Ekran zwycięstwa / porażki -->
+  <div id="endgame" class="fullscreen hidden">
+    <div class="endgame-box">
+      <div id="endgame-art"></div>
+      <h1 id="endgame-title"></h1>
+      <p id="endgame-sub"></p>
+      <div id="endgame-secret" class="hidden">
+        <p class="secret-label">Odblokowano sekretne hasło:</p>
+        <p class="secret-phrase">„Mycelium to przyszłość”</p>
+      </div>
+      <div class="menu-actions">
+        <button id="btn-keep-playing" class="big-btn">🌍 Graj dalej</button>
+        <button id="btn-to-menu" class="ghost-btn">↩ Wróć do menu</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
