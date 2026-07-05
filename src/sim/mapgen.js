@@ -42,8 +42,8 @@ export function generateMap(width, height, seed, numPlayers = 4) {
   for (const t of tiles) {
     if (t.type === 'woda') continue;
     const m = nMoist(t.col, t.row);
-    if (t.elev > 0.52) t.type = 'gory';
-    else if (m > 0.62) t.type = 'las';
+    if (t.elev > 0.60) t.type = 'gory';
+    else if (m > 0.56) t.type = 'las';
     else if (m < 0.30 && t.elev < 0.26) t.type = 'bagno';
   }
 
@@ -115,10 +115,14 @@ export function generateMap(width, height, seed, numPlayers = 4) {
   }
 
   // 7. Pozycje startowe: na równinach, maksymalnie od siebie oddalone
-  const landStarts = tiles.filter(t =>
-    (t.type === 'rownina' || t.type === 'pole') &&
-    neighbors(t.col, t.row).filter(([c, r]) =>
-      c >= 0 && r >= 0 && c < width && r < height && tiles[idx(c, r)].type !== 'woda').length >= 5);
+  const landStarts = tiles.filter(t => {
+    if (t.type !== 'rownina' && t.type !== 'pole') return false;
+    const ns = neighbors(t.col, t.row).filter(([c, r]) =>
+      c >= 0 && r >= 0 && c < width && r < height).map(([c, r]) => tiles[idx(c, r)]);
+    const open = ns.filter(n => ['rownina', 'pole', 'rzeka', 'las'].includes(n.type)).length;
+    const water = ns.filter(n => n.type === 'woda').length;
+    return ns.length === 6 && open >= 4 && water <= 1;
+  });
   const starts = [];
   shuffle(landStarts, rng);
   // Zachłannie: pierwszy losowy, kolejne maksymalizują min. odległość
