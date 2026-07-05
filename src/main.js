@@ -21,9 +21,14 @@ let selectedUnit = null;
 let reachCache = null;
 let animQueue = [];      // kolejka animowanych zdarzeń
 let animBusy = false;
+let animWait = 0;        // pozostały czas bieżącej animacji (sterowany pętlą renderu)
+let animBudget = 1e9;    // ile zdarzeń wolno jeszcze animować w tej fazie
+let lastPump = 0;        // znacznik czasu (watchdog)
 let aiPhase = false;
 let modelsReady = false;
 let running = false;
+// Tryb błyskawiczny (bez animacji zdarzeń) — ?szybko w adresie; używany też przez testy.
+const FAST = new URLSearchParams(location.search).has('szybko');
 
 // ---------------- start / menu ----------------
 ui.onStart = async (faction, size) => {
@@ -124,9 +129,12 @@ function refreshFog() {
 function drainEvents(instant = false) {
   const evs = game.events.splice(0, game.events.length);
   for (const e of evs) {
-    if (instant) { applyInstant(e); continue; }
+    if (instant || FAST) { applyInstant(e); continue; }
     animQueue.push(e);
   }
+  // W fazie przeciwników animujemy tylko kilkanaście najciekawszych zdarzeń,
+  // resztę stosujemy natychmiast — tura ma być żwawa.
+  if (aiPhase) animBudget = 14;
   pumpAnim();
 }
 
@@ -147,15 +155,25 @@ function pumpAnim() {
     return;
   }
   const vis = eventVisible(e) || e.t === 'notify' || e.t === 'techDone' || e.t === 'victory' || e.t === 'defeat';
-  if (!vis) { applyInstant(e); pumpAnim(); return; }
+  const important = ['victory', 'defeat', 'wonderBuilt', 'cityCaptured', 'cityRazed'].includes(e.t);
+  if (!vis || (animBudget <= 0 && !important)) { applyInstant(e); pumpAnim(); return; }
+  animBudget--;
   const dur = animate(e);
   if (dur > 0) {
     animBusy = true;
-    setTimeout(() => { animBusy = false; pumpAnim(); }, dur * 1000);
+    animWait = dur;
+    lastPump = performance.now();
   } else {
     pumpAnim();
   }
 }
+
+// Watchdog: gdyby pętla renderu przystanęła (karta w tle), i tak dokończ kolejkę.
+setInterval(() => {
+  if (animBusy && performance.now() - lastPump > Math.max(2000, animWait * 1000 + 1500)) {
+    animBusy = false; animWait = 0; pumpAnim();
+  }
+}, 700);
 
 function applyInstant(e) {
   switch (e.t) {
@@ -627,13 +645,22 @@ const clock = new THREE.Clock();
 function loop() {
   requestAnimationFrame(loop);
   const dt = Math.min(0.05, clock.getDelta());
+  if (animBusy) {
+    animWait -= dt;
+    if (animWait <= 0) { animBusy = false; pumpAnim(); }
+  }
   if (running && rig) {
     rig.update(dt);
     // słońce podąża za kamerą (cienie zawsze w kadrze)
     sun.position.set(rig.target.x + 24, 38, rig.target.z + 14);
     sun.target.position.set(rig.target.x, 0, rig.target.z);
     for (const [id, v] of unitViews) {
-      v.update(dt, game.units.get(id));
+      const u = game.units.get(id);
+      if (!v.moving && v.group.visible) {
+        const dx = v.group.position.x - rig.target.x, dz = v.group.position.z - rig.target.z;
+        if (dx * dx + dz * dz > 2500) { continue; } // daleko poza kadrem — oszczędzamy
+      }
+      v.update(dt, u);
     }
     fx && fx.update(dt);
     for (let i = tweens.length - 1; i >= 0; i--) {

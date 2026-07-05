@@ -149,7 +149,7 @@ export class Board {
     const n = this.map.tiles.length;
     const darkGeo = new THREE.CylinderGeometry(HEX * 1.01, HEX * 1.01, 2.6, 6);
     this.fogDark = new THREE.InstancedMesh(darkGeo,
-      new THREE.MeshStandardMaterial({ color: 0x0d1117, roughness: 1, flatShading: true }), n);
+      new THREE.MeshBasicMaterial({ color: 0x0b0e13 }), n);
     this.fogDark.castShadow = false; this.fogDark.receiveShadow = false;
     const dimGeo = new THREE.CylinderGeometry(HEX * 1.005, HEX * 1.005, 0.02, 6);
     this.fogDim = new THREE.InstancedMesh(dimGeo,

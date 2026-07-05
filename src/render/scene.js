@@ -6,7 +6,7 @@ export function createScene(canvas) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.1;
@@ -23,6 +23,8 @@ export function createScene(canvas) {
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.camera.near = 5; sun.shadow.camera.far = 120;
+  const sc = sun.shadow.camera;
+  sc.left = -30; sc.right = 30; sc.top = 30; sc.bottom = -30;
   sun.shadow.bias = -0.0007;
   scene.add(sun);
   scene.add(sun.target);
