@@ -29,6 +29,22 @@ let running = false;
 // Tryb błyskawiczny (bez animacji zdarzeń) — ?szybko w adresie; używany też przez testy.
 const FAST = new URLSearchParams(location.search).has('szybko');
 
+// ---------------- zapis w localStorage ----------------
+const SAVE_KEY = 'civ_polanie_zapis';
+function saveGame() {
+  if (!game || game.humanDefeated) return;
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify(game.serialize()));
+  } catch (e) { console.warn('Zapis nieudany:', e); }
+}
+function loadSaveData() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+window.addEventListener('beforeunload', saveGame);
+
 // ---------------- start / menu ----------------
 ui.onStart = async (faction, size) => {
   audio.start();
@@ -41,6 +57,21 @@ ui.onStart = async (faction, size) => {
   await new Promise(r => setTimeout(r, 30));
   startGame(faction, size);
 };
+
+ui.onContinue = async () => {
+  const data = loadSaveData();
+  if (!data) { ui.notify('Brak zapisu gry.', 'bad'); return; }
+  audio.start();
+  ui.showLoading('Wczytywanie prawdziwych modeli 3D…');
+  if (!modelsReady) {
+    await loadAllModels((d, n) => ui.setLoading(`Wczytywanie modeli… ${d}/${n}`));
+    modelsReady = true;
+  }
+  ui.setLoading('Wskrzeszanie zapisanego świata…');
+  await new Promise(r => setTimeout(r, 30));
+  startGame(null, null, data);
+};
+ui.hasSave = () => loadSaveData();
 
 ui.onToMenu = () => {
   running = false;
@@ -63,9 +94,9 @@ function teardown() {
   board = null; game = null; selectedUnit = null; animQueue = []; animBusy = false;
 }
 
-function startGame(faction, size) {
+function startGame(faction, size, saveData = null) {
   teardown();
-  game = new Game({ mapSize: size, humanFaction: faction });
+  game = saveData ? Game.fromSave(saveData) : new Game({ mapSize: size, humanFaction: faction });
   ui.attachGame(game);
   board = new Board(scene, game.map);
   fx = new FxSystem(scene);
@@ -76,18 +107,27 @@ function startGame(faction, size) {
   rig = new CameraRig(camera, canvas, { minX: 2, maxX: maxX - 2, minZ: 2, maxZ: maxZ - 2 },
     Math.min(110, Math.max(60, fitZoom)));
 
-  // jednostki startowe
+  // jednostki startowe (lub wczytane z zapisu)
   for (const u of game.units.values()) ensureUnitView(u);
   drainEvents(true); // zdarzenia początkowe bez animacji
+  for (const ct of game.cities.values()) board.addOrUpdateCity(game, ct);
 
-  const start = game.map.starts[0];
-  const [sx, sz] = hexToWorld(start[0], start[1], HEX);
-  rig.centerOn(sx, sz, 18);
+  if (saveData) {
+    const myCity = [...game.cities.values()].find(c => c.owner === 0);
+    const at = myCity ? [myCity.col, myCity.row] : game.map.starts[0];
+    const [sx, sz] = hexToWorld(at[0], at[1], HEX);
+    rig.centerOn(sx, sz, 18);
+  } else {
+    const start = game.map.starts[0];
+    const [sx, sz] = hexToWorld(start[0], start[1], HEX);
+    rig.centerOn(sx, sz, 18);
+  }
 
   refreshFog();
   ui.hideLoading();
   ui.updateHud(game);
-  ui.notify('Zaznacz Osadnika i załóż pierwszy gród! (📜 Jak grać — w razie wątpliwości)', 'good');
+  if (saveData) ui.notify(`Wczytano zapis — tura ${game.turn}. Grzybnia czekała cierpliwie.`, 'good');
+  else ui.notify('Zaznacz Osadnika i załóż pierwszy gród! (📜 Jak grać — w razie wątpliwości)', 'good');
   selectNextIdle();
   running = true;
   // uchwyt diagnostyczny (testy e2e / konsola)
@@ -124,7 +164,7 @@ function refreshFog() {
   for (const [id, v] of unitViews) {
     const u = game.units.get(id);
     if (!u) continue;
-    v.group.visible = visibleNow.has(keyOf(u.col, u.row)) || u.owner === 0;
+    v.group.visible = (visibleNow.has(keyOf(u.col, u.row)) || u.owner === 0) && !u.garrison;
   }
   // obozy barbarzyńców
   for (const camp of game.camps) {
@@ -199,9 +239,8 @@ function applyInstant(e) {
 }
 
 function retile(e) {
-  // Zmiana typu pola (zaorane/grabież): najprościej — przebuduj dekoracje i kolory od nowa
-  board.hideDecorAt(e.col, e.row);
-  // kolor heksa zostaje z poprzedniego typu; subtelne — pomijamy pełną przebudowę dla wydajności
+  // Zmiana typu pola (zaorane/grabież): kolor heksa + dekoracja (np. łany zboża)
+  board.retile(e.col, e.row, e.type);
 }
 
 function animate(e) {
@@ -264,10 +303,30 @@ function animate(e) {
       audio.build();
       return 0.7;
     }
-    case 'cityGrew': case 'cityRaided': {
+    case 'cityGrew': {
       const ct = game.cities.get(e.city.id);
       if (ct) board.addOrUpdateCity(game, ct);
       return 0.1;
+    }
+    case 'cityRaided': {
+      const ct = game.cities.get(e.city.id);
+      if (ct) board.addOrUpdateCity(game, ct);
+      const p = board.worldPos(e.city.col, e.city.row);
+      const vb = e.by && unitViews.get(e.by.id);
+      if (vb) { vb.faceTowards(p); vb.play('attack', { once: true }); }
+      fx.burst(p, { color: 0xff5522, n: 36, up: 2.4 });
+      fx.flash(p, { color: 0xff5522, intensity: 3.5, life: 0.8 });
+      audio.barb();
+      floatText(p, '🔥 Najazd!', '#ff8855');
+      return 1.0;
+    }
+    case 'garrisonChanged': {
+      const ct = game.cities.get(e.city.id);
+      if (ct) board.addOrUpdateCity(game, ct);
+      const v = unitViews.get(e.unit.id);
+      if (v) v.group.visible = !e.on;
+      if (e.on && e.city.owner === 0) audio.play('unit_ready', { vol: 0.5 });
+      return 0.2;
     }
     case 'cityBuilt': {
       const ct = game.cities.get(e.city.id);
@@ -361,6 +420,7 @@ function onVictory(e) {
 }
 
 function onDefeat() {
+  try { localStorage.removeItem(SAVE_KEY); } catch { /* i tak po grze */ }
   ui.showEndgame({ victory: false, faction: game.players[0].faction, isHuman: true, sandboxAvailable: false });
 }
 
@@ -435,21 +495,47 @@ function selectUnit(u) {
   }
 }
 
+function idleUnits() {
+  return [...game.units.values()].filter(u =>
+    u.owner === 0 && u.moves > 0 && !u.fortified && !u.garrison && u.working === 0);
+}
+
+function updateNextUnitButton() {
+  const btn = document.getElementById('btn-next-unit');
+  const n = idleUnits().length;
+  if (n > 0 && !aiPhase) {
+    btn.classList.remove('hidden');
+    document.getElementById('next-unit-count').textContent = n > 1 ? `(${n})` : '';
+    document.getElementById('btn-end-turn').classList.remove('attention');
+  } else {
+    btn.classList.add('hidden');
+    if (!aiPhase) document.getElementById('btn-end-turn').classList.add('attention');
+  }
+}
+
 function selectNextIdle() {
-  for (const u of game.units.values()) {
-    if (u.owner === 0 && u.moves > 0 && !u.fortified && u.working === 0) {
-      selectUnit(u);
-      const [x, z] = hexToWorld(u.col, u.row, HEX);
-      // delikatne dosunięcie kamery tylko gdy daleko
-      const dx = rig.target.x - x, dz = rig.target.z - z;
-      if (dx * dx + dz * dz > 140) rig.centerOn(x, z);
-      return true;
-    }
+  const idle = idleUnits();
+  // zacznij od jednostki PO obecnie zaznaczonej (cykliczne przechodzenie)
+  let pick = idle[0];
+  if (selectedUnit) {
+    const i = idle.findIndex(u => u.id === selectedUnit.id);
+    if (i >= 0 && idle.length > 1) pick = idle[(i + 1) % idle.length];
+  }
+  updateNextUnitButton();
+  if (pick) {
+    selectUnit(pick);
+    // przenieś kadr na jednostkę, która dostaje rozkazy
+    const [x, z] = hexToWorld(pick.col, pick.row, HEX);
+    rig.centerOn(x, z);
+    return true;
   }
   selectUnit(null);
-  document.getElementById('btn-end-turn').classList.add('attention');
   return false;
 }
+document.getElementById('btn-next-unit').addEventListener('click', () => {
+  audio.play('ui_click', { vol: 0.4 });
+  selectNextIdle();
+});
 
 canvas.addEventListener('click', (ev) => {
   if (!running || aiPhase) return;
@@ -472,11 +558,12 @@ canvas.addEventListener('click', (ev) => {
     ui.updateHud(game);
     if (game.units.has(u.id) && u.moves > 0) selectUnit(u);
     else { selectUnit(null); setTimeout(selectNextIdle, 350); }
+    updateNextUnitButton();
     return;
   }
 
   // zaznaczenie: jednostka gracza > gród > pole
-  const mine = game.unitsAt(c, r).filter(u => u.owner === 0);
+  const mine = game.unitsAt(c, r).filter(u => u.owner === 0 && !u.garrison);
   if (mine.length) {
     // cykliczne przełączanie w stosie
     const idx = selectedUnit ? mine.indexOf(selectedUnit) : -1;
@@ -489,6 +576,32 @@ canvas.addEventListener('click', (ev) => {
     ui.showCity(game, ct);
     audio.play('ui_open', { vol: 0.5 });
     selectUnit(null);
+    return;
+  }
+  selectUnit(null);
+});
+
+// prawy przycisk (lub długie dotknięcie → contextmenu): gród → panel, własna jednostka → zaznaczenie.
+// Nigdy nie wydaje rozkazu ruchu.
+canvas.addEventListener('contextmenu', (ev) => {
+  ev.preventDefault();
+  if (!running || aiPhase) return;
+  const hex = pickHex(ev);
+  if (!hex) return;
+  const [c, r] = hex;
+  if (!game.players[0].explored.has(keyOf(c, r))) return;
+  const mine = game.unitsAt(c, r).filter(u => u.owner === 0 && !u.garrison);
+  if (mine.length) {
+    const idx = selectedUnit ? mine.indexOf(selectedUnit) : -1;
+    selectUnit(mine[(idx + 1) % mine.length]);
+    audio.play('ui_click', { vol: 0.35 });
+    return;
+  }
+  const ct = game.cityAt(c, r);
+  if (ct && ct.owner === 0) {
+    selectUnit(null);
+    ui.showCity(game, ct);
+    audio.play('ui_open', { vol: 0.5 });
     return;
   }
   selectUnit(null);
@@ -542,6 +655,7 @@ ui.onUnitAction = (action, unit) => {
     case 'found': game.foundCity(u); break;
     case 'improve': game.improveTile(u); break;
     case 'fortify': game.fortify(u); break;
+    case 'garrison': game.setGarrison(u); break;
     case 'pillage': game.pillage(u); break;
     case 'spores': game.sporeBurst(u); break;
     case 'skip': u.moves = 0; break;
@@ -549,8 +663,9 @@ ui.onUnitAction = (action, unit) => {
   drainEvents();
   refreshFog();
   ui.updateHud(game);
-  if (game.units.has(u.id) && u.moves > 0) selectUnit(u);
+  if (game.units.has(u.id) && u.moves > 0 && !u.garrison) selectUnit(u);
   else { selectUnit(null); setTimeout(selectNextIdle, 400); }
+  updateNextUnitButton();
 };
 
 ui.onSetResearch = (techId) => {
@@ -568,6 +683,18 @@ ui.onSetBuild = (city, kind, id) => {
 ui.onBuyBuild = (city) => {
   if (game.buyBuild(city)) audio.gold();
   ui.updateHud(game);
+};
+
+ui.onUngarrison = (unitId) => {
+  const u = game.units.get(unitId);
+  if (!u) return;
+  game.unsetGarrison(u);
+  drainEvents();
+  refreshFog();
+  ui.hideCity();
+  selectUnit(u);
+  updateNextUnitButton();
+  audio.play('ui_click', { vol: 0.4 });
 };
 
 ui.onCityClick = (cityId) => {
@@ -595,6 +722,7 @@ function finishAiPhase() {
   ui.setEndTurnState('ready');
   refreshFog();
   ui.updateHud(game);
+  saveGame(); // automatyczny zapis co turę
   // przypomnienie o wyborze badania
   const p = game.players[0];
   if (!p.researching) {
@@ -630,7 +758,8 @@ function updateLabels() {
         : item.kind === 'unit' ? UNITS[item.id].name : BUILDINGS_NAME(item.id);
       prodTxt = ` <span class="cl-prod">⚒ ${nm}</span>`;
     }
-    el.innerHTML = `<span class="cl-pop">${ct.pop}</span>${ct.name}${prodTxt}`;
+    const gar = game.unitsAt(ct.col, ct.row).some(x => x.garrison && x.owner === ct.owner) ? '🛡 ' : '';
+    el.innerHTML = `<span class="cl-pop">${ct.pop}</span>${gar}${ct.name}${prodTxt}`;
     const wp = board.worldPos(ct.col, ct.row);
     wp.y += 1.3;
     const sp = wp.project(camera);

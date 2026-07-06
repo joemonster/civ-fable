@@ -17,6 +17,8 @@ const CITY_NAMES = {
 
 let nextId = 1;
 const uid = () => nextId++;
+export function getUid() { return nextId; }
+export function setUid(v) { nextId = Math.max(nextId, v | 0); }
 
 export class Game {
   constructor({ mapSize = 'srednia', humanFaction = 'polanie', seed = (Date.now() % 2147483647) } = {}) {
@@ -42,6 +44,7 @@ export class Game {
     }
     this.players = order.map((fid, i) => ({
       id: i, faction: fid, isHuman: i === 0, alive: true,
+      aiStyle: this.rng.pick(['obronny', 'ekspansywny', 'zbalansowany']),
       gold: 20, poparcie: 55, laska: 30,
       techs: new Set(), researching: null, sciBox: 0,
       explored: new Set(), namePool: [...CITY_NAMES[fid]],
@@ -140,7 +143,7 @@ export class Game {
     const u = {
       id: uid(), owner, type, col: c, row: r, hp: 100,
       moves: this.maxMoves(owner, type), fortified: false,
-      disoriented: 0, cooldown: 0, working: 0,
+      garrison: false, disoriented: 0, cooldown: 0, working: 0,
     };
     this.units.set(u.id, u);
     this.emit({ t: 'unitCreated', unit: this.unitView(u) });
@@ -255,6 +258,7 @@ export class Game {
       const [wc, wr] = walkPath[walkPath.length - 1];
       u.col = wc; u.row = wr;
       u.fortified = false;
+      u.garrison = false;
       this.emit({ t: 'unitMoved', unit: this.unitView(u), path: walkPath });
       if (u.owner >= 0) {
         for (const [pc, pr] of walkPath) this.revealAround(this.players[u.owner], pc, pr, 2);
@@ -347,8 +351,14 @@ export class Game {
         this.emit({ t: 'notify', msg: `Barbarzyńcy spalili gród ${city.name}!`, kind: 'bad', for: oldOwner });
       } else {
         city.pop = Math.max(1, city.pop - 1);
-        this.emit({ t: 'cityRaided', city: this.cityView(city) });
+        this.emit({ t: 'cityRaided', city: this.cityView(city), by: this.unitView(unit) });
         this.emit({ t: 'notify', msg: `Barbarzyńcy złupili gród ${city.name}!`, kind: 'bad', for: oldOwner });
+        // pospolite ruszenie broni grodu — najeźdźca krwawi przy każdym najeździe
+        unit.hp -= 35;
+        if (unit.hp <= 0) {
+          this.killUnit(unit, oldOwner);
+          this.emit({ t: 'notify', msg: `Lud grodu ${city.name} zatłukł napastnika!`, kind: 'good', for: oldOwner });
+        }
       }
       return;
     }
@@ -470,6 +480,29 @@ export class Game {
   fortify(u) {
     if (!UNITS[u.type].military) return false;
     u.fortified = true; u.moves = 0;
+    return true;
+  }
+
+  canGarrison(u) {
+    if (!UNITS[u.type].military || u.garrison) return false;
+    const ct = this.cityAt(u.col, u.row);
+    return !!ct && ct.owner === u.owner;
+  }
+
+  setGarrison(u) {
+    if (!this.canGarrison(u)) return false;
+    u.garrison = true; u.fortified = true; u.moves = 0;
+    const ct = this.cityAt(u.col, u.row);
+    this.emit({ t: 'garrisonChanged', city: this.cityView(ct), unit: this.unitView(u), on: true });
+    return true;
+  }
+
+  // Wyprowadzenie załogi z grodu — specjalna komenda z panelu grodu.
+  unsetGarrison(u) {
+    if (!u.garrison) return false;
+    u.garrison = false; u.fortified = false;
+    const ct = this.cityAt(u.col, u.row);
+    if (ct) this.emit({ t: 'garrisonChanged', city: this.cityView(ct), unit: this.unitView(u), on: false });
     return true;
   }
 
@@ -850,6 +883,48 @@ export class Game {
       }
     } while (!this.players[this.currentIdx].isHuman && guard++ < 10);
     return this.players[this.currentIdx];
+  }
+
+  // ---------- zapis / odczyt ----------
+  serialize() {
+    return {
+      v: 1,
+      mapSize: this.mapSize, turn: this.turn, currentIdx: this.currentIdx,
+      winner: this.winner, sandbox: this.sandbox, wonderBuiltBy: this.wonderBuiltBy,
+      humanDefeated: this.humanDefeated, uid: getUid(),
+      map: {
+        width: this.map.width, height: this.map.height,
+        seed: this.map.seed, starts: this.map.starts,
+        tiles: this.map.tiles.map(t => t.type),
+      },
+      players: this.players.map(p => ({
+        ...p, techs: [...p.techs], explored: [...p.explored],
+      })),
+      units: [...this.units.values()],
+      cities: [...this.cities.values()].map(c => ({ ...c, buildings: [...c.buildings] })),
+      camps: this.camps,
+    };
+  }
+
+  static fromSave(d) {
+    const g = Object.create(Game.prototype);
+    g.rng = makeRng((Date.now() % 2147483647) ^ 0x51ed270b);
+    g.mapSize = d.mapSize; g.turn = d.turn; g.currentIdx = d.currentIdx ?? 0;
+    g.winner = d.winner; g.sandbox = d.sandbox; g.wonderBuiltBy = d.wonderBuiltBy;
+    g.humanDefeated = d.humanDefeated;
+    g.events = [];
+    g.map = {
+      width: d.map.width, height: d.map.height, seed: d.map.seed, starts: d.map.starts,
+      tiles: d.map.tiles.map((type, i) => ({
+        col: i % d.map.width, row: Math.floor(i / d.map.width), type,
+      })),
+    };
+    g.players = d.players.map(p => ({ ...p, techs: new Set(p.techs), explored: new Set(p.explored) }));
+    g.units = new Map(d.units.map(u => [u.id, { garrison: false, ...u }]));
+    g.cities = new Map(d.cities.map(c => [c.id, { ...c, buildings: new Set(c.buildings) }]));
+    g.camps = d.camps || [];
+    setUid(d.uid || 1);
+    return g;
   }
 
   // Rok do wyświetlania (klimat wędrówki ludów)

@@ -42,9 +42,9 @@ export function generateMap(width, height, seed, numPlayers = 4) {
   for (const t of tiles) {
     if (t.type === 'woda') continue;
     const m = nMoist(t.col, t.row);
-    if (t.elev > 0.60) t.type = 'gory';
-    else if (m > 0.56) t.type = 'las';
-    else if (m < 0.30 && t.elev < 0.26) t.type = 'bagno';
+    if (t.elev > 0.58) t.type = 'gory';
+    else if (m > 0.50) t.type = 'las';
+    else if (m < 0.36 && t.elev < 0.30) t.type = 'bagno';
   }
 
   // 3. Rzeki: od gór schodzimy po elewacji do wody
@@ -69,13 +69,8 @@ export function generateMap(width, height, seed, numPlayers = 4) {
     }
   }
 
-  // 4. Pola uprawne: żyzne łaty przy rzekach i równinach
-  for (const t of tiles) {
-    if (t.type !== 'rownina') continue;
-    const nearRiver = neighbors(t.col, t.row).some(([c, r]) =>
-      c >= 0 && r >= 0 && c < width && r < height && tiles[idx(c, r)].type === 'rzeka');
-    if (nearRiver && rng.chance(0.4)) t.type = 'pole';
-  }
+  // 4. Pola uprawne nie występują naturalnie — zaoruje je dopiero Osadnik
+  //    (rozkaz „Zaorz pole” na równinie w granicach grodu).
 
   // 5. Bursztyn: przy wybrzeżu ("bałtycki brzeg"), 1 na ~140 pól, min. 4
   const coast = tiles.filter(t => (t.type === 'rownina' || t.type === 'bagno') &&

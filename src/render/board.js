@@ -1,7 +1,7 @@
 // Plansza: heksy (InstancedMesh na typ), dekoracje z prawdziwych modeli,
 // mgła wojny, podświetlenia, grody i obozy.
 import * as THREE from 'three';
-import { hexToWorld, keyOf } from '../sim/hex.js';
+import { hexToWorld, keyOf, neighbors as neighborsOf } from '../sim/hex.js';
 import { TILES, FACTIONS } from '../sim/data.js';
 import { models, scaleFor, bakedParts } from './assets.js';
 
@@ -38,12 +38,19 @@ export class Board {
     return new THREE.Vector3(x, this.tileTop.get(keyOf(c, r)) ?? 0.3, z);
   }
 
+  // Kolor renderowania pola (rzeka wygląda jak żyzna trawa — nurt rysujemy wstęgą,
+  // żeby nie myliła się z oceanem, po którym nie można pływać).
+  _renderColor(type) {
+    return type === 'rzeka' ? 0x6f9a3e : TILES[type].color;
+  }
+
   _buildTerrain() {
     const byType = {};
     for (const t of this.map.tiles) (byType[t.type] ||= []).push(t);
     const dummy = new THREE.Object3D();
     const color = new THREE.Color();
     this.terrainMeshes = {};
+    this.tileInstance = new Map(); // key -> { mesh, index }
     for (const [type, tiles] of Object.entries(byType)) {
       const h = TILE_H[type];
       const geo = new THREE.CylinderGeometry(HEX * 0.995, HEX * 0.96, h, 6);
@@ -55,7 +62,7 @@ export class Board {
       const mesh = new THREE.InstancedMesh(geo, mat, tiles.length);
       mesh.receiveShadow = true;
       mesh.castShadow = type === 'gory';
-      const base = new THREE.Color(TILES[type].color);
+      const base = new THREE.Color(this._renderColor(type));
       tiles.forEach((t, i) => {
         const [x, z] = hexToWorld(t.col, t.row, HEX);
         dummy.position.set(x, h / 2, z);
@@ -66,11 +73,90 @@ export class Board {
         color.copy(base).offsetHSL(0, 0, j);
         mesh.setColorAt(i, color);
         this.tileTop.set(keyOf(t.col, t.row), h);
+        this.tileInstance.set(keyOf(t.col, t.row), { mesh, index: i });
       });
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
       this.group.add(mesh);
       this.terrainMeshes[type] = { mesh, tiles };
+    }
+    this._buildRivers();
+  }
+
+  // Rzeki jako błękitne wstęgi łączące sąsiadujące pola rzeczne (i ujścia do morza).
+  _buildRivers() {
+    const verts = [];
+    const W = 0.30; // szerokość nurtu
+    const isWet = (c, r) => {
+      if (c < 0 || r < 0 || c >= this.map.width || r >= this.map.height) return false;
+      const t = this.map.tiles[r * this.map.width + c].type;
+      return t === 'rzeka' || t === 'woda';
+    };
+    const quad = (ax, az, bx, bz, y) => {
+      // prostokąt od (ax,az) do (bx,bz) o szerokości W
+      const dx = bx - ax, dz = bz - az;
+      const len = Math.hypot(dx, dz) || 1;
+      const px = -dz / len * W / 2, pz = dx / len * W / 2;
+      verts.push(
+        ax + px, y, az + pz, bx + px, y, bz + pz, bx - px, y, bz - pz,
+        ax + px, y, az + pz, bx - px, y, bz - pz, ax - px, y, az - pz);
+    };
+    for (const t of this.map.tiles) {
+      if (t.type !== 'rzeka') continue;
+      const [x, z] = hexToWorld(t.col, t.row, HEX);
+      const y = (this.tileTop.get(keyOf(t.col, t.row)) ?? 0.3) + 0.03;
+      let links = 0;
+      for (const [nc, nr] of neighborsOf(t.col, t.row)) {
+        if (!isWet(nc, nr)) continue;
+        links++;
+        const [nx, nz] = hexToWorld(nc, nr, HEX);
+        quad(x, z, (x + nx) / 2, (z + nz) / 2, y);
+      }
+      // staw/źródło: samotna rzeka też ma widoczną wodę
+      const discR = links ? 0.24 : 0.38;
+      for (let i = 0; i < 6; i++) {
+        const a1 = i / 6 * Math.PI * 2, a2 = (i + 1) / 6 * Math.PI * 2;
+        verts.push(x, y, z,
+          x + Math.cos(a1) * discR, y, z + Math.sin(a1) * discR,
+          x + Math.cos(a2) * discR, y, z + Math.sin(a2) * discR);
+      }
+    }
+    if (!verts.length) return;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+    geo.computeVertexNormals();
+    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+      color: 0x3f8fd0, roughness: 0.3, metalness: 0.3,
+      emissive: 0x1a3d5c, emissiveIntensity: 0.4, side: THREE.DoubleSide,
+    }));
+    mesh.receiveShadow = true;
+    this.group.add(mesh);
+  }
+
+  // Wizualna zmiana typu pola (zaoranie / grabież): kolor heksa + dekoracja.
+  retile(c, r, newType) {
+    this.hideDecorAt(c, r);
+    const inst = this.tileInstance.get(keyOf(c, r));
+    if (inst) {
+      const color = new THREE.Color(this._renderColor(newType))
+        .offsetHSL(0, 0, (hash2(c, r) - 0.5) * 0.10);
+      inst.mesh.setColorAt(inst.index, color);
+      if (inst.mesh.instanceColor) inst.mesh.instanceColor.needsUpdate = true;
+    }
+    // stare doraźne dekoracje precz, nowe (np. zboże na zaoranym polu) — postaw
+    const key = keyOf(c, r);
+    const oldX = this.extraDecor?.get(key);
+    if (oldX) { this.group.remove(oldX); this.extraDecor.delete(key); }
+    if (!this.extraDecor) this.extraDecor = new Map();
+    if (newType === 'pole' && models.has('ter_crops')) {
+      const inst2 = models.get('ter_crops').scene.clone(true);
+      inst2.scale.setScalar(scaleFor('ter_crops', 0.45));
+      const p = this.worldPos(c, r);
+      inst2.position.set(p.x, p.y, p.z);
+      inst2.rotation.y = hash2(c, r, 3) * Math.PI * 2;
+      inst2.traverse(o => { if (o.isMesh) o.castShadow = true; });
+      this.group.add(inst2);
+      this.extraDecor.set(key, inst2);
     }
   }
 
@@ -270,6 +356,8 @@ export class Board {
       put('bld_houses', 0.55, 0.42, 0.25, -0.9);
       put('bld_house', 0.5, -0.48, 0.3, 1.7);
     }
+    const garrisoned = game.unitsAt(city.col, city.row).some(x => x.garrison && x.owner === city.owner);
+    if (garrisoned) put('bld_tower', 1.0, 0.52, 0.05, 0.4);
     if (city.buildings.has('spichlerz')) put('bld_windmill', 1.05, 0.45, -0.42, 0.9);
     if (city.buildings.has('palisada')) put('bld_tower', 0.9, -0.52, -0.38, 0);
     if (city.buildings.has('sanktuarium')) {

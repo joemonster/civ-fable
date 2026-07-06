@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>Plemiona: Przebudzenie Grzybni</title>
+<title>Civilization: Polanie</title>
 <link rel="stylesheet" href="styles.css">
 <script type="importmap">
 {
@@ -20,8 +20,8 @@
   <!-- Menu główne -->
   <div id="menu" class="fullscreen">
     <div class="menu-box">
-      <h1>PLEMIONA</h1>
-      <h2>Przebudzenie Grzybni</h2>
+      <h1>CIVILIZATION</h1>
+      <h2>Polanie • Przebudzenie Grzybni</h2>
       <p class="tagline">Od włóczni i ula bojowego do nadinteligencji drzemiącej w grzybni.<br>
       Cztery plemiona. Jedna przyszłość. Kto pierwszy obudzi sieć — wygrywa.</p>
       <div class="menu-section">
@@ -33,9 +33,11 @@
         <div id="map-sizes" class="map-sizes"></div>
       </div>
       <div class="menu-actions">
-        <button id="btn-start" class="big-btn">⚔ Rozpocznij grę</button>
+        <button id="btn-continue" class="big-btn hidden">▶ Kontynuuj (tura <span id="save-turn">?</span>)</button>
+        <button id="btn-start" class="big-btn">⚔ Nowa gra</button>
         <button id="btn-guide-menu" class="ghost-btn">📜 Jak grać</button>
       </div>
+      <p id="save-hint" class="credits-line hidden">Nowa gra nadpisze automatyczny zapis.</p>
       <p class="credits-line">Trzy pozostałe plemiona poprowadzi SI. Barbarzyńcy nie śpią.</p>
     </div>
   </div>
@@ -58,6 +60,7 @@
       <span class="res" title="Łaska możnych — otwiera Kapliczki, Sanktuarium i Przebudzenie">🕯️ <b id="res-laska">30</b></span>
       <span class="res" id="res-turn">Tura 1</span>
       <button id="btn-tech" class="bar-btn" title="Drzewo technologii">🧪 <span id="tech-label">Wybierz badanie</span><span id="tech-progress"></span></button>
+      <button id="btn-empire" class="bar-btn" title="Przegląd grodów: budowa i przychody">📊</button>
       <span class="spacer"></span>
       <button id="btn-guide" class="bar-btn" title="Jak grać">📜</button>
       <button id="btn-sound" class="bar-btn" title="Dźwięk">🔊</button>
@@ -72,6 +75,7 @@
 
     <div id="notify-area"></div>
 
+    <button id="btn-next-unit" class="next-unit hidden">👣 Jednostka czeka na rozkaz <b id="next-unit-count"></b></button>
     <button id="btn-end-turn" class="end-turn">Zakończ turę <span class="key-hint">⏎</span></button>
     <div id="ai-thinking" class="hidden">⏳ Tury przeciwników…</div>
     <div id="tooltip" class="hidden"></div>
@@ -87,6 +91,16 @@
       <div id="city-current"></div>
       <div id="city-builds" class="build-list"></div>
       <div id="city-buildings"></div>
+    </div>
+  </div>
+
+  <!-- Imperium: budowa i przychody -->
+  <div id="empire-panel" class="modal hidden">
+    <div class="modal-box wide">
+      <button class="close-x" data-close="empire-panel">✕</button>
+      <h2>📊 Imperium</h2>
+      <p class="hint">Grody, ich przychody i bieżąca produkcja. Kliknij gród, by nim zarządzać.</p>
+      <div id="empire-content"></div>
     </div>
   </div>
 

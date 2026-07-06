@@ -86,8 +86,10 @@ function chooseBuild(game, p, ct) {
     if (m) { game.setBuild(ct, m.kind, m.id); return; }
   }
 
-  // 3) Ekspansja (do 4-5 grodów), tylko z większych grodów
-  let targetCities = 4 + (p.faction === 'polanie' ? 1 : 0);
+  // 3) Ekspansja — apetyt zależny od charakteru SI (obronny/ekspansywny/zbalansowany)
+  const style = p.aiStyle || 'zbalansowany';
+  let targetCities = (style === 'ekspansywny' ? 6 : style === 'obronny' ? 3 : 4) +
+    (p.faction === 'polanie' ? 1 : 0);
   // brakuje bursztynu/grzybni do badań lub projektu? poślij osadników po nie
   const nextBlocked = game.availableTechs(p).some(t => t.blocked);
   const needMycCity = p.techs.has('siec_grzybni') &&
@@ -108,8 +110,9 @@ function chooseBuild(game, p, ct) {
     if (b) { game.setBuild(ct, 'building', id); return; }
   }
 
-  // 6) Wojsko do limitu, potem grzybiarz dla dywersji
-  if (army < myCities.length * 2 + 1) {
+  // 6) Wojsko do limitu (obronni trzymają większą armię), potem grzybiarz dla dywersji
+  const armyCap = style === 'obronny' ? myCities.length * 3 + 1 : myCities.length * 2 + 1;
+  if (army < armyCap) {
     const g = builds.find(x => x.id === 'grzybiarz');
     const m = (game.rng.chance(0.3) && g) ? g : bestMilitary(builds);
     if (m) { game.setBuild(ct, m.kind, m.id); return; }
@@ -183,7 +186,9 @@ function actUnit(game, p, u, garrisons, myCities) {
   }
   // c) późna gra: szturm na wrogie grody, gdy mamy przewagę
   const myArmy = [...game.units.values()].filter(x => x.owner === p.id && UNITS[x.type].military).length;
-  if (myArmy >= myCities.length * 2 + 2 && game.turn > 30) {
+  const st = p.aiStyle || 'zbalansowany';
+  const assaultAt = st === 'obronny' ? myCities.length * 3 + 3 : st === 'ekspansywny' ? myCities.length * 2 : myCities.length * 2 + 2;
+  if (myArmy >= assaultAt && game.turn > (st === 'ekspansywny' ? 25 : 30)) {
     for (const ct of game.cities.values()) {
       if (ct.owner === p.id || !explored.has(keyOf(ct.col, ct.row))) continue;
       const d = hexDistance(u.col, u.row, ct.col, ct.row);

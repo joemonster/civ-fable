@@ -206,3 +206,26 @@ html, body { height: 100%; overflow: hidden; background: #0b0f14;
   #topbar { font-size: 11.5px; gap: 6px; }
   #res-turn { order: 9; }
 }
+
+/* wskaźnik następnej jednostki */
+.next-unit { position: absolute; left: 50%; transform: translateX(-50%); bottom: 18px;
+  font-size: 15px; font-weight: 700; padding: 11px 20px; border: 1px solid #d8a03a; border-radius: 12px;
+  cursor: pointer; background: rgba(30, 24, 8, .93); color: #f1d795;
+  box-shadow: 0 4px 16px rgba(216, 160, 58, .35); animation: pulse 1.6s ease-in-out infinite; }
+.next-unit:hover { filter: brightness(1.2); }
+@media (max-width: 720px) {
+  .next-unit { bottom: 74px; font-size: 13px; padding: 9px 14px; }
+}
+/* tabela imperium */
+.empire-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.empire-table th { text-align: left; color: #b7ab7d; font-weight: 600; padding: 6px 8px; border-bottom: 1px solid #3a3423; }
+.empire-table td { padding: 7px 8px; border-bottom: 1px solid #23201566; }
+.empire-table tr.city-row { cursor: pointer; }
+.empire-table tr.city-row:hover { background: rgba(255,255,255,.06); }
+.empire-table .et-name { color: #f1e6bf; font-weight: 700; }
+.empire-table .et-build { color: #9dc76f; }
+.empire-table .et-none { color: #8f8768; font-style: italic; }
+.empire-table tfoot td { color: #d8c98a; font-weight: 700; border-top: 2px solid #3a3423; }
+.empire-upkeep { margin-top: 10px; font-size: 13px; color: #9f9880; }
+/* węzeł-zagadka w drzewku */
+.tech-node.mystery { opacity: .6; cursor: default; border-style: dashed; }
