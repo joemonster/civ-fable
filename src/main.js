@@ -91,7 +91,7 @@ function startGame(faction, size) {
   selectNextIdle();
   running = true;
   // uchwyt diagnostyczny (testy e2e / konsola)
-  window.__game = game;
+  window.__game = game; window.__rig = rig;
   window.__redraw = () => { drainEvents(); refreshFog(); ui.updateHud(game); };
   window.__toScreen = (c, r) => {
     const p = board.worldPos(c, r).project(camera);
@@ -656,6 +656,9 @@ function loop() {
   }
   if (running && rig) {
     rig.update(dt);
+    // mgła atmosferyczna skaluje się z oddaleniem — mapa nie znika przy pełnym zoomie
+    scene.fog.near = Math.max(60, rig.zoom * 2.2);
+    scene.fog.far = Math.max(140, rig.zoom * 4.5);
     // słońce podąża za kamerą (cienie zawsze w kadrze)
     sun.position.set(rig.target.x + 24, 38, rig.target.z + 14);
     sun.target.position.set(rig.target.x, 0, rig.target.z);

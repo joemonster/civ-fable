@@ -90,7 +90,7 @@ export class CameraRig {
     el.addEventListener('pointerdown', (e) => {
       if (e.pointerType === 'touch') {
         this.pointers.set(e.pointerId, [e.clientX, e.clientY]);
-        el.setPointerCapture(e.pointerId);
+        try { el.setPointerCapture(e.pointerId); } catch { /* syntetyczne zdarzenia */ }
         if (this.pointers.size === 1) {
           this.touchMoved = 0;
           this.last = [e.clientX, e.clientY];
@@ -103,7 +103,7 @@ export class CameraRig {
       if (e.button === 1 || e.button === 2 || (e.button === 0 && e.shiftKey)) {
         this.dragging = true;
         this.last = [e.clientX, e.clientY];
-        el.setPointerCapture(e.pointerId);
+        try { el.setPointerCapture(e.pointerId); } catch { /* syntetyczne zdarzenia */ }
       }
     });
     el.addEventListener('pointermove', (e) => {
