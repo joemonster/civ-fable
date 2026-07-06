@@ -44,24 +44,34 @@ export function createScene(canvas) {
   return { renderer, scene, camera, sun };
 }
 
-// Kamera "z lotu ptaka" — sterowanie pod gładzik:
-//  * przewijanie dwoma palcami = przesuwanie mapy
-//  * pinch (ctrl+wheel) lub +/- = przybliżanie
-//  * przeciąganie myszą (LPM na pustym / środkowy) = przesuwanie
+// Kamera "z lotu ptaka" — sterowanie pod gładzik i ekran dotykowy:
+//  * przewijanie dwoma palcami / przeciąganie palcem = przesuwanie mapy
+//  * pinch (dwa palce lub ctrl+wheel) albo +/- = przybliżanie
+//  * przeciąganie myszą (Shift+LPM / środkowy) = przesuwanie
 export class CameraRig {
-  constructor(camera, dom, bounds) {
+  constructor(camera, dom, bounds, maxZoom = 60) {
     this.camera = camera;
     this.dom = dom;
     this.bounds = bounds; // {minX,maxX,minZ,maxZ}
     this.target = new THREE.Vector3(
       (bounds.minX + bounds.maxX) / 2, 0, (bounds.minZ + bounds.maxZ) / 2);
     this.zoom = 26;        // odległość
-    this.minZoom = 9; this.maxZoom = 60;
+    this.minZoom = 9; this.maxZoom = maxZoom;
     this.tilt = 0.95;      // rad od pionu
     this.dragging = false;
     this.last = [0, 0];
+    this.pointers = new Map(); // aktywne dotknięcia (pointerId -> pozycja)
+    this.touchMoved = 0;       // suma ruchu palca (próg: stuknięcie vs przesunięcie)
+    this.pinchDist = 0;
+    this.suppressClick = false; // po przeciągnięciu palcem nie traktuj puszczenia jak kliknięcia
     this._bind();
     this.update(0);
+  }
+
+  // Zjada jedno "kliknięcie" po zakończonym przesuwaniu palcem.
+  consumeSuppressedClick() {
+    if (this.suppressClick) { this.suppressClick = false; return true; }
+    return false;
   }
 
   _bind() {
@@ -78,6 +88,18 @@ export class CameraRig {
     }, { passive: false });
 
     el.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'touch') {
+        this.pointers.set(e.pointerId, [e.clientX, e.clientY]);
+        el.setPointerCapture(e.pointerId);
+        if (this.pointers.size === 1) {
+          this.touchMoved = 0;
+          this.last = [e.clientX, e.clientY];
+        } else if (this.pointers.size === 2) {
+          const [a, b] = [...this.pointers.values()];
+          this.pinchDist = Math.hypot(a[0] - b[0], a[1] - b[1]);
+        }
+        return;
+      }
       if (e.button === 1 || e.button === 2 || (e.button === 0 && e.shiftKey)) {
         this.dragging = true;
         this.last = [e.clientX, e.clientY];
@@ -85,13 +107,44 @@ export class CameraRig {
       }
     });
     el.addEventListener('pointermove', (e) => {
+      if (e.pointerType === 'touch' && this.pointers.has(e.pointerId)) {
+        this.pointers.set(e.pointerId, [e.clientX, e.clientY]);
+        if (this.pointers.size === 2) {
+          // pinch: zbliżanie/oddalanie + przesuwanie środkiem gestu
+          const [a, b] = [...this.pointers.values()];
+          const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+          if (this.pinchDist > 0 && d > 0) this.zoom *= this.pinchDist / d;
+          this.pinchDist = d;
+          this.suppressClick = true;
+          this.clamp();
+          return;
+        }
+        // jeden palec: przesuwanie mapy (po przekroczeniu progu stuknięcia)
+        const dx = e.clientX - this.last[0], dy = e.clientY - this.last[1];
+        this.touchMoved += Math.abs(dx) + Math.abs(dy);
+        if (this.touchMoved > 12) {
+          const k = this.zoom / 620;
+          this.pan(-dx * k, -dy * k);
+          this.suppressClick = true;
+          this.clamp();
+        }
+        this.last = [e.clientX, e.clientY];
+        return;
+      }
       if (!this.dragging) return;
       const k = this.zoom / 620;
       this.pan(-(e.clientX - this.last[0]) * k, -(e.clientY - this.last[1]) * k);
       this.last = [e.clientX, e.clientY];
       this.clamp();
     });
-    el.addEventListener('pointerup', () => { this.dragging = false; });
+    const endPointer = (e) => {
+      this.pointers.delete(e.pointerId);
+      if (this.pointers.size < 2) this.pinchDist = 0;
+      if (this.pointers.size === 1) this.last = [...this.pointers.values()][0];
+      this.dragging = false;
+    };
+    el.addEventListener('pointerup', endPointer);
+    el.addEventListener('pointercancel', endPointer);
     el.addEventListener('contextmenu', (e) => e.preventDefault());
 
     this.keys = new Set();

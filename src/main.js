@@ -70,7 +70,11 @@ function startGame(faction, size) {
   board = new Board(scene, game.map);
   fx = new FxSystem(scene);
   const [maxX, maxZ] = hexToWorld(game.map.width - 1, game.map.height - 1, HEX);
-  rig = new CameraRig(camera, canvas, { minX: 2, maxX: maxX - 2, minZ: 2, maxZ: maxZ - 2 });
+  // limit oddalenia dobrany tak, by cała mapa mieściła się w kadrze (także w pionie telefonu)
+  const aspect = Math.min(1, window.innerWidth / window.innerHeight);
+  const fitZoom = Math.max(maxX / aspect, maxZ) * 0.85 + 12;
+  rig = new CameraRig(camera, canvas, { minX: 2, maxX: maxX - 2, minZ: 2, maxZ: maxZ - 2 },
+    Math.min(110, Math.max(60, fitZoom)));
 
   // jednostki startowe
   for (const u of game.units.values()) ensureUnitView(u);
@@ -449,7 +453,7 @@ function selectNextIdle() {
 
 canvas.addEventListener('click', (ev) => {
   if (!running || aiPhase) return;
-  if (rig.dragging) return;
+  if (rig.dragging || rig.consumeSuppressedClick()) return;
   audio.start();
   const hex = pickHex(ev);
   if (!hex) return;
