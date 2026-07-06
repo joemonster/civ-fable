@@ -69,6 +69,19 @@ export function generateMap(width, height, seed, numPlayers = 4) {
     }
   }
 
+  // 3b. Przerzedzenie rzek: nurt może sąsiadować najwyżej z DWOMA innymi
+  //     polami rzeki — żadnych rozlewisk na trzy pola i szerokich delt.
+  let thinned = true;
+  while (thinned) {
+    thinned = false;
+    for (const t of tiles) {
+      if (t.type !== 'rzeka') continue;
+      const riverN = neighbors(t.col, t.row).filter(([c, r]) =>
+        c >= 0 && r >= 0 && c < width && r < height && tiles[idx(c, r)].type === 'rzeka').length;
+      if (riverN > 2) { t.type = 'rownina'; thinned = true; }
+    }
+  }
+
   // 4. Pola uprawne nie występują naturalnie — zaoruje je dopiero Osadnik
   //    (rozkaz „Zaorz pole” na równinie w granicach grodu).
 

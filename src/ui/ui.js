@@ -177,11 +177,14 @@ export class UI {
     if (!unit) { panel.classList.add('hidden'); return; }
     panel.classList.remove('hidden');
     const d = UNITS[unit.type];
-    $('unit-title').textContent = d.name;
+    const hpColor = unit.hp > 60 ? '#6db14a' : unit.hp > 30 ? '#d8a03a' : '#d24b3b';
+    $('unit-title').innerHTML = `${d.name}
+      <span class="hpbar" title="Zdrowie: ${unit.hp}/100"><i style="width:${unit.hp}%;background:${hpColor}"></i></span>`;
     const rows = [
       `⚔ Atak: <b>${game.attackOf(unit)}</b> &nbsp; 🛡 Obrona: <b>${d.def}</b>`,
-      `👣 Ruch: <b>${unit.moves}</b> &nbsp; ❤️ Zdrowie: <b>${unit.hp}/100</b>`,
+      `👣 Ruch: <b>${unit.moves}</b> &nbsp; ❤️ <b>${unit.hp}/100</b>`,
     ];
+    if (unit.resting) rows.push(`<span style="color:#d8a03a">💤 Odpoczywa (+20❤️/turę, obrona -25%)</span>`);
     if (unit.disoriented > 0) rows.push(`<span style="color:#b06fd8">😵 Zdezorientowany (${unit.disoriented} t.)</span>`);
     if (unit.type === 'grzybiarz' && unit.cooldown > 0) rows.push(`🍄 Zarodniki gotowe za ${unit.cooldown} t.`);
     if (unit.working > 0) rows.push(`🌾 Orka w toku…`);
@@ -212,7 +215,23 @@ export class UI {
       btn('🍄 Zarodniki', 'spores', game.canSpore(unit), true,
         'Dezorientuje wrogów wokół i osłabia obronę grodów (2 tury)');
     }
+    if (unit.resting) {
+      btn('☀ Pobudka', 'wake', true, false, 'Przerwij odpoczynek — jednostka wraca do służby');
+    } else {
+      btn('💤 Odpocznij', 'rest', game.canRest(unit), false,
+        'Odzyskuje 20❤️ na turę, ale jest wrażliwa (-25% obrony), aż wyzdrowieje lub dostanie rozkaz');
+    }
     btn('⏭ Pomiń', 'skip', true, false, 'Jednostka czeka do następnej tury');
+    // podpowiedź o polach uprawnych — tam, gdzie jest potrzebna
+    const oldHint = panel.querySelector('.unit-hint');
+    if (oldHint) oldHint.remove();
+    if (unit.type === 'osadnik') {
+      const hint = el('div', 'unit-hint',
+        '🌾 <b>Pola uprawne:</b> zaoraj równinę w promieniu 2 pól od grodu (2 tury). ' +
+        'Każdy mieszkaniec grodu pracuje na jednym polu w tym promieniu — zaorane pole daje aż 3 🍞, ' +
+        'więc gród szybciej rośnie.');
+      panel.appendChild(hint);
+    }
   }
 
   // ---------- panel grodu ----------

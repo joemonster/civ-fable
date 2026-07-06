@@ -26,6 +26,8 @@ let animBudget = 1e9;    // ile zdarzeń wolno jeszcze animować w tej fazie
 let aiPhase = false;
 let modelsReady = false;
 let running = false;
+let nextIdleWhenQuiet = false; // przeskocz do kolejnej jednostki dopiero po obejrzeniu animacji
+let lastMove = null;           // dane do cofnięcia ostatniego ruchu
 // Tryb błyskawiczny (bez animacji zdarzeń) — ?szybko w adresie; używany też przez testy.
 const FAST = new URLSearchParams(location.search).has('szybko');
 
@@ -130,6 +132,7 @@ function startGame(faction, size, saveData = null) {
   else ui.notify('Zaznacz Osadnika i załóż pierwszy gród! (📜 Jak grać — w razie wątpliwości)', 'good');
   selectNextIdle();
   running = true;
+  audio.setEra(game.players[0].techs.size);
   // uchwyt diagnostyczny (testy e2e / konsola)
   window.__game = game; window.__rig = rig;
   window.__redraw = () => { drainEvents(); refreshFog(); ui.updateHud(game); };
@@ -199,10 +202,16 @@ function pumpAnim() {
   const e = animQueue.shift();
   if (!e) {
     if (aiPhase) finishAiPhase();
+    else if (nextIdleWhenQuiet) {
+      // gracz zdążył zobaczyć efekt walki — teraz można przenieść kadr
+      nextIdleWhenQuiet = false;
+      setTimeout(() => { if (!animBusy && !animQueue.length) selectNextIdle(); }, 300);
+    }
     return;
   }
   const vis = eventVisible(e) || e.t === 'notify' || e.t === 'techDone' || e.t === 'victory' || e.t === 'defeat';
-  const important = ['victory', 'defeat', 'wonderBuilt', 'cityCaptured', 'cityRazed'].includes(e.t);
+  const important = ['victory', 'defeat', 'wonderBuilt', 'cityCaptured', 'cityRazed'].includes(e.t) ||
+    (e.t === 'combat' && (e.attacker.owner === 0 || e.defender.owner === 0));
   if (!vis || (animBudget <= 0 && !important)) { applyInstant(e); pumpAnim(); return; }
   animBudget--;
   const dur = animate(e);
@@ -231,6 +240,7 @@ function applyInstant(e) {
     case 'cityRazed': board.removeCity(e.city.id); break;
     case 'campSpawned': break; // pojawi się przy odświeżeniu mgły
     case 'campDestroyed': board.removeCamp(e.col, e.row); break;
+    case 'combat': combatToast(e, game.cityAt(e.at[0], e.at[1])); break;
     case 'tileChanged': retile(e); break;
     case 'victory': onVictory(e); break;
     case 'defeat': onDefeat(); break;
@@ -269,11 +279,13 @@ function animate(e) {
     case 'combat': {
       const va = unitViews.get(e.attacker.id), vd = unitViews.get(e.defender.id);
       const target = board.worldPos(e.at[0], e.at[1]);
+      const atCity = game.cityAt(e.at[0], e.at[1]);
       if (va) { va.faceTowards(target); va.play('attack', { once: true }); }
       if (vd) vd.faceTowards(va ? va.group.position : target);
       audio.attack();
       if (e.attacker.type === 'bartnik') { audio.play('bees', { vol: 0.9 }); if (va) fx.beeSwarm(va.group.position, target); }
       if (e.attacker.type === 'barbarzynca' || e.attacker.type === 'barbarzynca_elit') audio.barb();
+      if (atCity) { fx.flash(target, { color: 0xff7733, intensity: 3, life: 0.9, dist: 8 }); audio.play('drums', { vol: 0.5 }); }
       setTimeout(() => {
         fx.burst(target, { color: 0xffd23b, n: 20 });
         fx.flash(target, { color: 0xffaa55, intensity: 2.5 });
@@ -281,8 +293,9 @@ function animate(e) {
         if (loser) loser.play('death', { once: true });
         audio.play('unit_death', { vol: 0.55, delay: 0.15 });
         floatText(target, e.attackerWon ? '⚔' : '🛡', e.attackerWon ? '#ffd23b' : '#9adfff');
+        combatToast(e, atCity); // najpierw efekty, potem komunikat
       }, 420);
-      return 1.25;
+      return 1.35;
     }
     case 'unitDied': {
       const v = unitViews.get(e.unit.id);
@@ -398,6 +411,7 @@ function animate(e) {
         audio.play('tech', { vol: 0.9 });
         if (e.tech === 'elektrycznosc') audio.play('zap', { vol: 0.7, delay: 0.4 });
         ui.renderTech(game);
+        audio.setEra(game.players[0].techs.size); // nowa epoka — nowa nuta
       }
       return e.player === 0 ? 0.3 : 0;
     }
@@ -412,6 +426,34 @@ function animate(e) {
     }
     default: return 0;
   }
+}
+
+// Komunikat o wyniku każdej walki z udziałem gracza.
+function combatToast(e, atCity) {
+  const mineA = e.attacker.owner === 0, mineD = e.defender.owner === 0;
+  if (!mineA && !mineD) return;
+  const who = (o) => o === -1 ? 'Barbarzyńcy' : FACTIONS[game.players[o].faction].name;
+  const an = UNITS[e.attacker.type].name, dn = UNITS[e.defender.type].name;
+  const cityTxt = atCity ? ` pod grodem ${atCity.name}` : '';
+  let msg, kind;
+  if (mineA) {
+    if (e.attackerWon) {
+      msg = `⚔ Zwycięstwo! Twój ${an} pokonał: ${dn} (${who(e.defender.owner)})${cityTxt}. Zostało mu ❤️${e.attacker.hp}.`;
+      kind = 'good';
+    } else {
+      msg = `💀 Klęska! Twój ${an} poległ w starciu z: ${dn} (${who(e.defender.owner)})${cityTxt}.`;
+      kind = 'bad';
+    }
+  } else {
+    if (e.attackerWon) {
+      msg = `💀 Twój ${dn} poległ${cityTxt} — dopadł go ${an} (${who(e.attacker.owner)}).`;
+      kind = 'bad';
+    } else {
+      msg = `🛡 Obrona! Twój ${dn} odparł atak: ${an} (${who(e.attacker.owner)})${cityTxt}. Zostało mu ❤️${e.defender.hp}.`;
+      kind = 'good';
+    }
+  }
+  ui.notify(msg, kind);
 }
 
 function onVictory(e) {
@@ -472,6 +514,45 @@ function pickHex(ev) {
   return best;
 }
 
+// Podpis widocznych kontaktów (wrogie jednostki/grody/obozy) — ruch wolno cofnąć
+// tylko, gdy niczego nowego nie zobaczyliśmy.
+function contactSignature() {
+  const parts = [];
+  for (const u of game.units.values()) {
+    if (u.owner === 0 || u.hp <= 0) continue;
+    if (visibleNow.has(keyOf(u.col, u.row))) parts.push('u' + u.id);
+  }
+  for (const ct of game.cities.values()) {
+    if (ct.owner !== 0 && game.players[0].explored.has(keyOf(ct.col, ct.row))) parts.push('c' + ct.id);
+  }
+  for (const k of game.camps) {
+    if (game.players[0].explored.has(keyOf(k.col, k.row))) parts.push('k' + k.col + '_' + k.row);
+  }
+  return parts.sort().join(',');
+}
+
+function updateUndoButton() {
+  document.getElementById('btn-undo').classList.toggle('hidden', !lastMove);
+}
+
+function undoMove() {
+  if (!lastMove) return;
+  const u = game.units.get(lastMove.unitId);
+  if (!u) { lastMove = null; updateUndoButton(); return; }
+  u.col = lastMove.col; u.row = lastMove.row;
+  u.moves = lastMove.moves; u.fortified = lastMove.fortified;
+  const v = unitViews.get(u.id);
+  if (v) { v.moving = null; v.group.position.copy(board.worldPos(u.col, u.row)); v.play('idle'); }
+  lastMove = null;
+  updateUndoButton();
+  refreshFog();
+  selectUnit(u);
+  updateNextUnitButton();
+  audio.play('ui_close', { vol: 0.5 });
+  ui.notify('↩ Cofnięto ruch.', 'info');
+}
+document.getElementById('btn-undo').addEventListener('click', undoMove);
+
 function selectUnit(u) {
   selectedUnit = u;
   if (!u) {
@@ -497,7 +578,7 @@ function selectUnit(u) {
 
 function idleUnits() {
   return [...game.units.values()].filter(u =>
-    u.owner === 0 && u.moves > 0 && !u.fortified && !u.garrison && u.working === 0);
+    u.owner === 0 && u.moves > 0 && !u.fortified && !u.garrison && !u.resting && u.working === 0);
 }
 
 function updateNextUnitButton() {
@@ -552,12 +633,29 @@ canvas.addEventListener('click', (ev) => {
       !(selectedUnit.col === c && selectedUnit.row === r)) {
     const u = selectedUnit;
     audio.play('ui_click', { vol: 0.4 });
+    // migawka do ewentualnego cofnięcia (to turówka — czysty marsz można odwołać)
+    const p0 = game.players[0];
+    const pre = {
+      unitId: u.id, col: u.col, row: u.row, moves: u.moves, fortified: u.fortified,
+      explored: p0.explored.size, contacts: contactSignature(),
+    };
     game.moveUnit(u, c, r);
+    // czy zdarzył się TYLKO marsz? (bez walki, grabieży, zdobyczy, odkryć)
+    const evs = game.events;
+    const onlyWalk = evs.every(ev => ev.t === 'unitMoved' && ev.unit.id === u.id);
     drainEvents();
     refreshFog();
     ui.updateHud(game);
+    if (onlyWalk && p0.explored.size === pre.explored && contactSignature() === pre.contacts) {
+      lastMove = pre;
+    } else {
+      lastMove = null;
+      if (!onlyWalk) nextIdleWhenQuiet = true; // walka/odkrycie — najpierw pokaż, potem przeskocz
+    }
+    updateUndoButton();
     if (game.units.has(u.id) && u.moves > 0) selectUnit(u);
-    else { selectUnit(null); setTimeout(selectNextIdle, 350); }
+    else if (onlyWalk) { selectUnit(null); setTimeout(selectNextIdle, 350); }
+    else selectUnit(null);
     updateNextUnitButton();
     return;
   }
@@ -651,11 +749,14 @@ ui.onUnitAction = (action, unit) => {
   audio.play('ui_click', { vol: 0.4 });
   const u = game.units.get(unit.id);
   if (!u) return;
+  lastMove = null; updateUndoButton();
   switch (action) {
     case 'found': game.foundCity(u); break;
     case 'improve': game.improveTile(u); break;
     case 'fortify': game.fortify(u); break;
     case 'garrison': game.setGarrison(u); break;
+    case 'rest': game.rest(u); break;
+    case 'wake': game.wake(u); break;
     case 'pillage': game.pillage(u); break;
     case 'spores': game.sporeBurst(u); break;
     case 'skip': u.moves = 0; break;
@@ -708,6 +809,7 @@ ui.onEndTurn = () => {
   if (game.winner !== null && !game.sandbox) return;
   audio.play('turn_end', { vol: 0.7 });
   document.getElementById('btn-end-turn').classList.remove('attention');
+  lastMove = null; updateUndoButton();
   selectUnit(null);
   ui.hideCity();
   aiPhase = true;

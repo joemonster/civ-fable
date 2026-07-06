@@ -143,7 +143,7 @@ export class Game {
     const u = {
       id: uid(), owner, type, col: c, row: r, hp: 100,
       moves: this.maxMoves(owner, type), fortified: false,
-      garrison: false, disoriented: 0, cooldown: 0, working: 0,
+      garrison: false, resting: false, disoriented: 0, cooldown: 0, working: 0,
     };
     this.units.set(u.id, u);
     this.emit({ t: 'unitCreated', unit: this.unitView(u) });
@@ -192,6 +192,7 @@ export class Game {
     if (!city && this.unitsAt(u.col, u.row).some(x => x.type === 'tabor' && x.id !== u.id)) bonus += 0.5;
     if (ignoreTerrainHalf) bonus *= 0.5;
     if (u.disoriented > 0) d *= 0.75;
+    if (u.resting) d *= 0.75; // śpiący obóz łatwo zaskoczyć
     return Math.max(0.5, d * (1 + Math.max(-0.5, bonus)));
   }
 
@@ -259,6 +260,7 @@ export class Game {
       u.col = wc; u.row = wr;
       u.fortified = false;
       u.garrison = false;
+      u.resting = false;
       this.emit({ t: 'unitMoved', unit: this.unitView(u), path: walkPath });
       if (u.owner >= 0) {
         for (const [pc, pr] of walkPath) this.revealAround(this.players[u.owner], pc, pr, 2);
@@ -482,6 +484,16 @@ export class Game {
     u.fortified = true; u.moves = 0;
     return true;
   }
+
+  canRest(u) { return u.hp < 100 && u.moves > 0 && !u.resting; }
+
+  rest(u) {
+    if (!this.canRest(u)) return false;
+    u.resting = true; u.fortified = false; u.moves = 0;
+    return true;
+  }
+
+  wake(u) { u.resting = false; return true; }
 
   canGarrison(u) {
     if (!UNITS[u.type].military || u.garrison) return false;
@@ -839,6 +851,15 @@ export class Game {
       u.moves = this.maxMoves(p.id, u.type);
       if (u.disoriented > 0) { u.moves = Math.max(1, u.moves - 1); u.disoriented--; }
       if (u.cooldown > 0) u.cooldown--;
+      if (u.resting) {
+        u.hp = Math.min(100, u.hp + 20);
+        if (u.hp >= 100) {
+          u.resting = false;
+          if (p.isHuman) this.emit({ t: 'notify', msg: `${UNITS[u.type].name} wypoczął i wraca do służby.`, kind: 'good', for: p.id });
+        } else {
+          u.moves = 0; // wciąż śpi
+        }
+      }
     }
     // utrzymanie
     let upkeep = 0;
@@ -920,7 +941,7 @@ export class Game {
       })),
     };
     g.players = d.players.map(p => ({ ...p, techs: new Set(p.techs), explored: new Set(p.explored) }));
-    g.units = new Map(d.units.map(u => [u.id, { garrison: false, ...u }]));
+    g.units = new Map(d.units.map(u => [u.id, { garrison: false, resting: false, ...u }]));
     g.cities = new Map(d.cities.map(c => [c.id, { ...c, buildings: new Set(c.buildings) }]));
     g.camps = d.camps || [];
     setUid(d.uid || 1);

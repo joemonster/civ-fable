@@ -8,7 +8,7 @@ import { models, scaleFor, bakedParts } from './assets.js';
 export const HEX = 1;
 const TILE_H = {
   woda: 0.14, rownina: 0.30, las: 0.34, bagno: 0.22, rzeka: 0.18,
-  gory: 0.85, pole: 0.30, bursztyn: 0.32, grzybnia: 0.36,
+  gory: 1.05, pole: 0.30, bursztyn: 0.32, grzybnia: 0.36,
 };
 
 function hash2(c, r, s = 0) {
@@ -41,7 +41,9 @@ export class Board {
   // Kolor renderowania pola (rzeka wygląda jak żyzna trawa — nurt rysujemy wstęgą,
   // żeby nie myliła się z oceanem, po którym nie można pływać).
   _renderColor(type) {
-    return type === 'rzeka' ? 0x6f9a3e : TILES[type].color;
+    if (type === 'rzeka') return 0x6f9a3e;
+    if (type === 'gory') return 0x9a9aa2; // chłodna szarość skał
+    return TILES[type].color;
   }
 
   _buildTerrain() {
@@ -164,7 +166,10 @@ export class Board {
     switch (type) {
       case 'las': return [{ model: 'ter_pines', n: 1, h: 1.5 }];
       case 'grzybnia': return [{ model: 'ter_deadtree', n: 1, h: 1.6 }, { model: 'ter_mushroom', n: 3, h: 0.42, tint: 0xb06fd8, glow: 0.55 }];
-      case 'gory': return [{ model: 'ter_rock', n: 1, h: 0.85, tint: 0x9a938a }, { model: 'ter_rocks', n: 2, h: 0.4, tint: 0x8a8578 }];
+      case 'gory': return [
+        { model: 'ter_rock', n: 1, h: 1.0, tint: 0xb8bcc4, stretchY: 2.6 },
+        { model: 'ter_rock', n: 1, h: 0.7, tint: 0x989ca6, stretchY: 2.0 },
+        { model: 'ter_rocks', n: 2, h: 0.35, tint: 0xa3a7af }];
       case 'bursztyn': return [{ model: 'ter_mineral', n: 2, h: 0.55, tint: 0xffb02e, glow: 0.5 }];
       case 'pole': return [{ model: 'ter_crops', n: 1, h: 0.45 }];
       case 'bagno': return [{ model: 'ter_deadtree', n: 1, h: 0.9, chance: 0.5 }];
@@ -194,6 +199,10 @@ export class Board {
           if (d.tint) {
             mat = mat.clone();
             mat.color = new THREE.Color(d.tint);
+            mat.map = null;              // tekstura modelu nie może przebijać tintu
+            mat.vertexColors = false;    // ani kolory wierzchołków
+            mat.flatShading = true;
+            mat.needsUpdate = true;
             if (d.glow) { mat.emissive = new THREE.Color(d.tint); mat.emissiveIntensity = d.glow; }
           }
           const im = new THREE.InstancedMesh(part.geometry, mat, placed.length);
@@ -206,7 +215,8 @@ export class Board {
             const jitter = 0.8 + hash2(pl.t.col, pl.t.row, pl.k + 5) * 0.45;
             dummy.position.set(x + Math.cos(a) * rad, this.tileTop.get(keyOf(pl.t.col, pl.t.row)), z + Math.sin(a) * rad);
             dummy.rotation.set(0, a * 3, 0);
-            dummy.scale.setScalar(s * jitter);
+            const sy = d.stretchY ? d.stretchY * (0.85 + hash2(pl.t.col, pl.t.row, pl.k + 9) * 0.5) : 1;
+            dummy.scale.set(s * jitter, s * jitter * sy, s * jitter);
             dummy.updateMatrix();
             im.setMatrixAt(i, dummy.matrix);
             const key = keyOf(pl.t.col, pl.t.row);

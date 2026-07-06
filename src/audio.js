@@ -57,10 +57,11 @@ class AudioSys {
     this.playMusic();
   }
 
-  playMusic() {
+  playMusic(rate = this.musicRate || 1) {
     if (this.musicEl) return;
     const el = new Audio(MUSIC[this.musicIdx]);
     el.volume = this.muted ? 0 : 0.18;
+    el.playbackRate = rate;
     el.addEventListener('ended', () => {
       this.musicIdx = (this.musicIdx + 1) % MUSIC.length;
       this.musicEl = null;
@@ -68,6 +69,26 @@ class AudioSys {
     });
     el.play().catch(() => { this.musicEl = null; });
     this.musicEl = el;
+  }
+
+  // Każdy wynalazek przestraja muzykę: zmiana utworu + coraz żwawsze tempo epok.
+  setEra(n) {
+    const idx = n % MUSIC.length;
+    this.musicRate = Math.min(1.18, 1 + n * 0.025);
+    if (this.musicEl && this.musicIdx === idx) {
+      this.musicEl.playbackRate = this.musicRate;
+      return;
+    }
+    if (this.musicEl) {
+      const old = this.musicEl;
+      this.musicEl = null;
+      const fade = setInterval(() => {
+        old.volume = Math.max(0, old.volume - 0.025);
+        if (old.volume <= 0.01) { clearInterval(fade); old.pause(); }
+      }, 70);
+    }
+    this.musicIdx = idx;
+    if (this.started) this.playMusic(this.musicRate);
   }
 
   play(name, { vol = 1, rate = 1, delay = 0 } = {}) {
