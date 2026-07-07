@@ -61,16 +61,31 @@ export class UI {
       });
       sizes.appendChild(b);
     }
+    // Ekran tytułowy → ustawienia nowej gry / wczytanie / przewodnik
+    $('btn-new-game').addEventListener('click', () => this.showSetup());
+    $('btn-load').addEventListener('click', () => this.onContinue && this.onContinue());
+    $('btn-guide-title').addEventListener('click', () => this.showGuide());
+    // Ustawienia nowej gry → start / powrót do tytułu
     $('btn-start').addEventListener('click', () => this.onStart && this.onStart(this.selFaction, this.selSize));
-    $('btn-guide-menu').addEventListener('click', () => this.showGuide());
-    $('btn-continue').addEventListener('click', () => this.onContinue && this.onContinue());
+    $('btn-back-title').addEventListener('click', () => this.showTitle());
   }
 
   refreshSaveButton() {
     const save = this.hasSave && this.hasSave();
-    $('btn-continue').classList.toggle('hidden', !save);
+    $('btn-load').classList.toggle('hidden', !save);
     $('save-hint').classList.toggle('hidden', !save);
     if (save) $('save-turn').textContent = save.turn;
+  }
+
+  showTitle() {
+    $('title').classList.remove('hidden');
+    $('menu').classList.add('hidden');
+    this.refreshSaveButton();
+  }
+
+  showSetup() {
+    $('title').classList.add('hidden');
+    $('menu').classList.remove('hidden');
   }
 
   _bindGlobal() {
@@ -109,14 +124,15 @@ export class UI {
   }
 
   showMenu() {
-    $('menu').classList.remove('hidden');
+    $('menu').classList.add('hidden');
     $('hud').classList.add('hidden');
     $('endgame').classList.add('hidden');
     ['city-panel', 'tech-panel', 'guide-panel', 'empire-panel'].forEach(id => $(id).classList.add('hidden'));
-    this.refreshSaveButton();
+    this.showTitle();
   }
 
   showLoading(txt) {
+    $('title').classList.add('hidden');
     $('menu').classList.add('hidden');
     $('loading').classList.remove('hidden');
     $('loading-text').textContent = txt;

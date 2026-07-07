@@ -40,6 +40,19 @@ html, body { height: 100%; overflow: hidden; background: #0b0f14;
 .ghost-btn:hover { border-color: #d8c98a; color: #d8c98a; }
 .credits-line { margin-top: 16px; font-size: 12px; color: #6f6852; }
 
+/* Ekran tytułowy */
+.title-box { text-align: center; padding: 32px; max-width: 720px; }
+.title-logo { font-size: 82px; letter-spacing: 14px; color: #d8c98a; margin: 0;
+  text-shadow: 0 0 40px rgba(216, 201, 138, .4), 0 5px 0 #000; line-height: 1; }
+.title-sub { font-size: 24px; color: #9dc76f; margin: 6px 0 0; letter-spacing: 4px;
+  text-shadow: 0 0 18px rgba(157, 199, 111, .5); }
+.title-actions { margin: 30px auto 0; display: flex; flex-direction: column; gap: 14px;
+  max-width: 380px; }
+.title-actions .big-btn, .title-actions .ghost-btn { width: 100%; text-decoration: none;
+  display: block; text-align: center; box-sizing: border-box; }
+.big-btn.secondary { background: linear-gradient(180deg, #6f9a3e, #4d6f2a);
+  color: #0d1408; box-shadow: 0 6px 18px rgba(111, 154, 62, .35); }
+
 /* ---------- ładowanie ---------- */
 .loading-box { text-align: center; }
 .spinner { width: 54px; height: 54px; border: 5px solid #333; border-top-color: #d8c98a; border-radius: 50%;
@@ -175,6 +188,7 @@ html, body { height: 100%; overflow: hidden; background: #0b0f14;
 @media (max-width: 900px) {
   .faction-cards { grid-template-columns: repeat(2, 1fr); }
   .menu-box h1 { font-size: 44px; }
+  .title-logo { font-size: 56px; letter-spacing: 8px; }
 }
 
 /* ---------- małe ekrany (telefony) ---------- */
@@ -197,6 +211,9 @@ html, body { height: 100%; overflow: hidden; background: #0b0f14;
   .menu-box { padding: 16px 10px; }
   .menu-box h1 { font-size: 34px; letter-spacing: 6px; }
   .menu-box h2 { font-size: 18px; }
+  .title-logo { font-size: 40px; letter-spacing: 5px; }
+  .title-sub { font-size: 16px; }
+  .title-actions { margin-top: 20px; }
   .faction-card .fc-desc { min-height: 0; }
   .big-btn { font-size: 17px; padding: 12px 22px; }
   #endgame-title { font-size: 30px; }

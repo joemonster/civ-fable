@@ -17,13 +17,28 @@
 <div id="app">
   <canvas id="scena"></canvas>
 
-  <!-- Menu główne -->
-  <div id="menu" class="fullscreen">
-    <div class="menu-box">
-      <h1>CIVILIZATION</h1>
-      <h2>Polanie • Przebudzenie Grzybni</h2>
+  <!-- Ekran tytułowy -->
+  <div id="title" class="fullscreen">
+    <div class="title-box">
+      <h1 class="title-logo">CIVILIZATION</h1>
+      <h2 class="title-sub">Polanie • Przebudzenie Grzybni</h2>
       <p class="tagline">Od włóczni i ula bojowego do nadinteligencji drzemiącej w grzybni.<br>
       Cztery plemiona. Jedna przyszłość. Kto pierwszy obudzi sieć — wygrywa.</p>
+      <div class="title-actions">
+        <button id="btn-new-game" class="big-btn">⚔ Nowa gra</button>
+        <button id="btn-load" class="big-btn secondary hidden">▶ Wczytaj (tura <span id="save-turn">?</span>)</button>
+        <a id="btn-original" class="ghost-btn" href="https://joemonster.org/art/79564" target="_blank" rel="noopener">📖 Więcej o grze oryginalnej</a>
+        <button id="btn-guide-title" class="ghost-btn">📜 Jak grać</button>
+      </div>
+      <p class="credits-line">Prywatna gra dla znajomych z joemonster.org.<br>Trzy pozostałe plemiona poprowadzi SI. Barbarzyńcy nie śpią.</p>
+    </div>
+  </div>
+
+  <!-- Ustawienia nowej gry -->
+  <div id="menu" class="fullscreen hidden">
+    <div class="menu-box">
+      <h1>NOWA GRA</h1>
+      <h2>Wybierz plemię i świat</h2>
       <div class="menu-section">
         <h3>Wybierz plemię</h3>
         <div id="faction-cards" class="faction-cards"></div>
@@ -33,9 +48,8 @@
         <div id="map-sizes" class="map-sizes"></div>
       </div>
       <div class="menu-actions">
-        <button id="btn-continue" class="big-btn hidden">▶ Kontynuuj (tura <span id="save-turn">?</span>)</button>
-        <button id="btn-start" class="big-btn">⚔ Nowa gra</button>
-        <button id="btn-guide-menu" class="ghost-btn">📜 Jak grać</button>
+        <button id="btn-start" class="big-btn">⚔ Rozpocznij</button>
+        <button id="btn-back-title" class="ghost-btn">↩ Wstecz</button>
       </div>
       <p id="save-hint" class="credits-line hidden">Nowa gra nadpisze automatyczny zapis.</p>
       <p class="credits-line">Trzy pozostałe plemiona poprowadzi SI. Barbarzyńcy nie śpią.</p>
